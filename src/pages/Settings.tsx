@@ -12,6 +12,8 @@ import { CategorySheet, RecurringSheet } from '../forms'
 import { CurrencySheet } from '../sheets'
 import { PinSetupSheet, PinVerifySheet, biometricAvailable, biometricRegister } from '../lock'
 import { iconFor } from '../icons'
+import { ExportBackupSheet, UnlockBackupSheet } from '../backup'
+import { isEncrypted, type EncryptedBackup } from '../crypto'
 
 const CURRENCIES: { value: Currency; label: string }[] = [
   { value: 'FCFA', label: 'FCFA' },
@@ -59,6 +61,8 @@ export function SettingsPage() {
   const [pending, setPending] = useState<Data | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [wipe, setWipe] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [locked, setLocked] = useState<EncryptedBackup | null>(null)
   const [biometric, setBiometric] = useState(false)
   // Action de sécurité en attente de la saisie du code actuel
   const [verify, setVerify] = useState<'change' | 'disable' | null>(null)
@@ -84,9 +88,6 @@ export function SettingsPage() {
       toast('Déverrouillage biométrique activé')
     } else setProblem('L’activation a été annulée ou n’est pas possible sur cet appareil.')
   }
-  function exportJSON() {
-    store.exportBackup().then((ok) => ok && toast('Sauvegarde exportée'))
-  }
   function exportCSV() {
     download(`braz-transactions-${todayISO()}.csv`, toCSV(transactions, categories, accounts), 'text/csv;charset=utf-8').then(
       (ok) => ok && toast('Transactions exportées'),
@@ -95,7 +96,16 @@ export function SettingsPage() {
   async function onFile(file: File | undefined) {
     if (!file) return
     try {
-      setPending(readBackup(await file.text()))
+      const text = await file.text()
+      let raw: unknown = null
+      try {
+        raw = JSON.parse(text)
+      } catch {
+        /* readBackup renverra le message adapté */
+      }
+      // Sauvegarde protégée : on demande d'abord son mot de passe.
+      if (isEncrypted(raw)) setLocked(raw)
+      else setPending(readBackup(text))
     } catch (e) {
       setProblem(e instanceof Error ? e.message : 'Ce fichier est illisible.')
     }
@@ -181,8 +191,8 @@ export function SettingsPage() {
 
         <Section title="Données" index={4}>
           <div className="card divide-y divide-line overflow-hidden">
-            <Row icon={Download} title="Exporter une sauvegarde" text={lastBackup} onClick={exportJSON} />
-            <Row icon={FileSpreadsheet} title="Exporter en CSV" text="Pour Excel ou Google Sheets" onClick={exportCSV} />
+            <Row icon={Download} title="Exporter une sauvegarde" text={lastBackup} onClick={() => setExporting(true)} />
+            <Row icon={FileSpreadsheet} title="Exporter en CSV" text="Pour Excel ou Google Sheets, non protégé" onClick={exportCSV} />
             <Row icon={Upload} title="Restaurer une sauvegarde" onClick={() => fileRef.current?.click()} />
             {empty ? (
               <Row icon={Sparkles} title="Voir un exemple" text="Quatre mois de données fictives" onClick={() => store.loadDemo().then(() => toast('Exemples chargés'))} />
@@ -197,6 +207,8 @@ export function SettingsPage() {
 
       {catForm && <CategorySheet category={catForm === 'new' ? null : catForm} onClose={() => setCatForm(null)} />}
       {pinSetup && <PinSetupSheet onClose={() => setPinSetup(false)} />}
+      {exporting && <ExportBackupSheet onClose={() => setExporting(false)} />}
+      {locked && <UnlockBackupSheet backup={locked} onOpened={setPending} onClose={() => setLocked(null)} />}
       {verify && (
         <PinVerifySheet
           title={verify === 'change' ? 'Modifier le code' : 'Désactiver le code'}

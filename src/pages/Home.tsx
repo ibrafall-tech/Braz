@@ -8,16 +8,18 @@ import { Button, Empty, IconChip, Money, MonthSwitcher, Progress, stagger, useTo
 import { Logo, PageHeader, SectionHead, TxRow } from '../parts'
 import { Sparkline } from '../charts'
 import { AccountSheet } from '../sheets'
+import { ExportBackupSheet } from '../backup'
 
 const DAY = 86_400_000
 
 export function Home() {
   const {
     transactions, goals, budgets, categories, accounts, transfers, moves, balances, total, alerts, month, money, settings,
-    setTxForm, setTransferForm, loadDemo, updateSettings, exportBackup,
+    setTxForm, setTransferForm, loadDemo, updateSettings,
   } = useStore()
   const toast = useToast()
   const [accountForm, setAccountForm] = useState<Account | 'new' | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const totalSaved = goals.reduce((s, g) => s + g.saved, 0)
   const monthTx = useMemo(() => inMonth(transactions, month), [transactions, month])
@@ -142,7 +144,7 @@ export function Home() {
               {backupAge === null ? 'Aucune sauvegarde pour l’instant' : `Dernière il y a ${backupAge} jours`}
             </span>
           </p>
-          <Button className="h-10 shrink-0 px-4" onClick={() => exportBackup().then((ok) => ok && toast('Sauvegarde exportée'))}>
+          <Button className="h-10 shrink-0 px-4" onClick={() => setExporting(true)}>
             Exporter
           </Button>
           <button
@@ -261,6 +263,7 @@ export function Home() {
         </div>
       )}
 
+      {exporting && <ExportBackupSheet onClose={() => setExporting(false)} />}
       {accountForm && <AccountSheet account={accountForm === 'new' ? null : accountForm} onClose={() => setAccountForm(null)} />}
     </>
   )

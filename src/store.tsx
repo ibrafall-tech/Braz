@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import * as db from './db'
+import { encryptBackup } from './crypto'
 import type { Account, Budget, Category, Currency, Data, Goal, Recurring, SavingsMove, Settings, Transaction, Transfer } from './types'
 import {
   DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, accountBalances, budgetAlerts, convertData, currentMonth, demoData, download, dueRecurring, emptyData,
@@ -26,8 +27,11 @@ interface Store extends Data {
   updateSettings: (patch: Partial<Settings>) => void
   replaceAll: (data: Data) => Promise<void>
   clearAll: () => Promise<void>
-  /** Enregistre une sauvegarde JSON et note la date de l'export. Renvoie false si l'export a été annulé. */
-  exportBackup: () => Promise<boolean>
+  /**
+   * Enregistre une sauvegarde JSON et note la date de l'export. Avec un mot de passe, le fichier est chiffré.
+   * Renvoie false si l'export a été annulé.
+   */
+  exportBackup: (password?: string) => Promise<boolean>
   loadDemo: () => Promise<void>
   /** Change de devise ; avec un taux, tous les montants sont convertis. */
   changeCurrency: (currency: Currency, factor?: number) => Promise<void>
@@ -165,8 +169,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateSettings,
       replaceAll,
       clearAll: () => replaceAll(emptyData(data.settings)),
-      exportBackup: async () => {
-        const ok = await download(`braz-sauvegarde-${todayISO()}.json`, JSON.stringify(toBackup(data), null, 2), 'application/json')
+      exportBackup: async (password) => {
+        const plain = JSON.stringify(toBackup(data), null, 2)
+        const ok = password
+          ? await download(`braz-sauvegarde-protegee-${todayISO()}.json`, JSON.stringify(await encryptBackup(plain, password)), 'application/json')
+          : await download(`braz-sauvegarde-${todayISO()}.json`, plain, 'application/json')
         if (ok) updateSettings({ lastBackupAt: Date.now(), backupSnoozeUntil: undefined })
         return ok
       },

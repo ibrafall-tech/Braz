@@ -26,7 +26,7 @@
 | **Statistiques** | Vue par mois ou par année, comparaison avec la période précédente, répartition par catégorie, moyenne par jour. |
 | **Sécurité** | Code à 4 chiffres à l'ouverture, déverrouillage par Face ID ou empreinte sur les appareils compatibles. |
 | **Devises** | FCFA, XOF, euro, dollar. Changer de devise peut convertir tous les montants au taux de votre choix. |
-| **Données** | Export et restauration d'une sauvegarde JSON, export CSV des transactions, rappel de sauvegarde. |
+| **Données** | Sauvegarde chiffrée par mot de passe (AES-256), restauration, export CSV des transactions, rappel de sauvegarde. |
 
 Devise FCFA par défaut. Interface en français.
 
@@ -50,7 +50,9 @@ Les montants des captures sont des données d'exemple.
 Il n'y a ni compte, ni serveur, ni suivi. Toutes les données restent sur l'appareil, dans IndexedDB.
 
 - Les données ne se synchronisent pas entre appareils : utilisez l'export et la restauration pour les transférer.
-- Le code d'accès verrouille l'écran, il ne chiffre pas les données.
+- Le code d'accès verrouille l'écran, il ne chiffre pas les données : activez aussi le verrouillage du téléphone, qui chiffre tout l'appareil.
+- Les sauvegardes sont chiffrées par défaut (AES-GCM 256 bits, clé dérivée du mot de passe par PBKDF2-SHA-256, 600 000 itérations). Le mot de passe n'est stocké nulle part : s'il est perdu, la sauvegarde est illisible.
+- Le mode discret (icône œil sur l'accueil) masque les montants à l'écran.
 - Effacer les données du navigateur efface aussi celles de BRAZ : exportez une sauvegarde régulièrement.
 
 ## Installer l'application
