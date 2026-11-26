@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowUpRight, PiggyBank, Plus, ShieldCheck, TriangleAlert, Wallet, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Eye, EyeOff, PiggyBank, Plus, ShieldCheck, TriangleAlert, Wallet, X } from 'lucide-react'
 import type { Account } from '../types'
 import { useStore } from '../store'
-import { currentMonth, daysInMonth, inMonth, sortTx, spentByCategory, sum, todayISO } from '../lib'
+import { currentMonth, daysInMonth, inMonth, monthLabel, sortTx, spentByCategory, sum, todayISO } from '../lib'
 import { iconFor } from '../icons'
 import { Button, Empty, IconChip, Money, MonthSwitcher, Progress, stagger, useToast } from '../ui'
 import { Logo, PageHeader, SectionHead, TxRow } from '../parts'
@@ -13,7 +13,7 @@ const DAY = 86_400_000
 
 export function Home() {
   const {
-    transactions, goals, budgets, categories, accounts, transfers, balances, total, alerts, month, money, settings,
+    transactions, goals, budgets, categories, accounts, transfers, moves, balances, total, alerts, month, money, settings,
     setTxForm, setTransferForm, loadDemo, updateSettings, exportBackup,
   } = useStore()
   const toast = useToast()
@@ -25,20 +25,28 @@ export function Home() {
   const expense = sum(monthTx, 'expense')
   const recent = useMemo(() => sortTx(monthTx).slice(0, 6), [monthTx])
 
-  // Solde cumulé jour par jour sur le mois affiché
+  // Solde disponible jour par jour sur le mois affiché, calculé comme le solde des comptes :
+  // soldes de départ + revenus − dépenses − argent placé en épargne (les transferts s'annulent).
   const curve = useMemo(() => {
     const start = `${month}-01`
-    let running = transactions.reduce((s, t) => (t.date < start ? s + (t.type === 'income' ? t.amount : -t.amount) : s), 0)
-    const last = month === currentMonth() ? Number(todayISO().slice(8)) : daysInMonth(month)
+    const flows = [
+      ...transactions.map((t) => ({ date: t.date, n: t.type === 'income' ? t.amount : -t.amount })),
+      ...moves.map((m) => ({ date: m.date, n: -m.amount })),
+    ]
+    let running = accounts.reduce((s, a) => s + (a.initial || 0), 0)
     const byDay = new Map<number, number>()
-    for (const t of monthTx) {
-      const d = Number(t.date.slice(8))
-      byDay.set(d, (byDay.get(d) ?? 0) + (t.type === 'income' ? t.amount : -t.amount))
+    for (const f of flows) {
+      if (f.date < start) running += f.n
+      else if (f.date.startsWith(month)) byDay.set(Number(f.date.slice(8)), (byDay.get(Number(f.date.slice(8))) ?? 0) + f.n)
     }
+    const last = month === currentMonth() ? Number(todayISO().slice(8)) : daysInMonth(month)
     const values = [running]
     for (let d = 1; d <= last; d++) values.push((running += byDay.get(d) ?? 0))
     return values
-  }, [transactions, monthTx, month])
+  }, [transactions, moves, accounts, month])
+  // Mois passé : solde à la fin de ce mois. Mois en cours : solde réel des comptes.
+  const isCurrent = month === currentMonth()
+  const shownBalance = isCurrent ? total : curve[curve.length - 1]
 
   const spent = useMemo(() => spentByCategory(monthTx), [monthTx])
   const topBudgets = budgets
@@ -64,9 +72,23 @@ export function Home() {
 
       <section className="hero rise relative overflow-hidden rounded-[2rem]">
         <div className="px-6 pt-6 md:px-8 md:pt-8">
-          <p className="text-[15px] font-medium text-ink/60">Solde disponible</p>
-          <p className={`display num mt-1 text-[clamp(2rem,10.5vw,3.75rem)] font-semibold leading-none ${total < 0 ? 'text-neg' : ''}`}>
-            <Money value={total} />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[15px] font-medium text-ink/70">
+              {isCurrent ? 'Solde disponible' : `Solde fin ${monthLabel(month).toLowerCase()}`}
+            </p>
+            <button
+              type="button"
+              onClick={() => updateSettings({ hideAmounts: !settings.hideAmounts })}
+              aria-pressed={!!settings.hideAmounts}
+              aria-label={settings.hideAmounts ? 'Afficher les montants' : 'Masquer les montants'}
+              title={settings.hideAmounts ? 'Afficher les montants' : 'Masquer les montants'}
+              className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-ink/70 transition hover:bg-white/60 active:scale-90"
+            >
+              {settings.hideAmounts ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+          <p className={`display num mt-1 text-[clamp(2rem,10.5vw,3.75rem)] font-semibold leading-none ${shownBalance < 0 ? 'text-neg' : ''}`}>
+            <Money value={shownBalance} />
           </p>
           {totalSaved > 0 && (
             <a
@@ -83,14 +105,14 @@ export function Home() {
         </div>
         <dl className="grid grid-cols-2 bg-white/45 backdrop-blur-sm">
           <div className="min-w-0 px-4 py-4 min-[380px]:px-6 md:px-8">
-            <dt className="flex items-center gap-1.5 text-sm text-ink/60">
+            <dt className="flex items-center gap-1.5 text-sm text-ink/70">
               <span className="grid size-5 place-items-center rounded-full bg-pos/15 text-pos"><ArrowDownLeft size={13} strokeWidth={2.6} /></span>
               Revenus
             </dt>
             <dd className="num mt-0.5 truncate text-[clamp(0.9rem,4.5vw,1.125rem)] font-semibold"><Money value={income} /></dd>
           </div>
           <div className="min-w-0 border-l border-white/70 px-4 py-4 min-[380px]:px-6 md:px-8">
-            <dt className="flex items-center gap-1.5 text-sm text-ink/60">
+            <dt className="flex items-center gap-1.5 text-sm text-ink/70">
               <span className="grid size-5 place-items-center rounded-full bg-ember/15 text-ember"><ArrowUpRight size={13} strokeWidth={2.6} /></span>
               Dépenses
             </dt>

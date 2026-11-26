@@ -10,7 +10,7 @@ import { Button, ConfirmDelete, Segmented, Sheet, Switch, stagger, useToast } fr
 import { PageHeader } from '../parts'
 import { CategorySheet, RecurringSheet } from '../forms'
 import { CurrencySheet } from '../sheets'
-import { PinSetupSheet, biometricAvailable, biometricRegister } from '../lock'
+import { PinSetupSheet, PinVerifySheet, biometricAvailable, biometricRegister } from '../lock'
 import { iconFor } from '../icons'
 
 const CURRENCIES: { value: Currency; label: string }[] = [
@@ -60,6 +60,8 @@ export function SettingsPage() {
   const [problem, setProblem] = useState<string | null>(null)
   const [wipe, setWipe] = useState(false)
   const [biometric, setBiometric] = useState(false)
+  // Action de sécurité en attente de la saisie du code actuel
+  const [verify, setVerify] = useState<'change' | 'disable' | null>(null)
 
   useEffect(() => {
     biometricAvailable().then(setBiometric)
@@ -116,14 +118,11 @@ export function SettingsPage() {
           <div className="card divide-y divide-line overflow-hidden">
             {settings.pin ? (
               <>
-                <Row icon={KeyRound} title="Modifier le code" text="Demandé à chaque ouverture" onClick={() => setPinSetup(true)} />
+                <Row icon={KeyRound} title="Modifier le code" text="Demandé à chaque ouverture" onClick={() => setVerify('change')} />
                 <Row
                   icon={LockKeyholeOpen}
                   title="Désactiver le code"
-                  onClick={() => {
-                    updateSettings({ pin: undefined, biometricId: undefined })
-                    toast('Code d’accès désactivé')
-                  }}
+                  onClick={() => setVerify('disable')}
                 />
               </>
             ) : (
@@ -198,6 +197,19 @@ export function SettingsPage() {
 
       {catForm && <CategorySheet category={catForm === 'new' ? null : catForm} onClose={() => setCatForm(null)} />}
       {pinSetup && <PinSetupSheet onClose={() => setPinSetup(false)} />}
+      {verify && (
+        <PinVerifySheet
+          title={verify === 'change' ? 'Modifier le code' : 'Désactiver le code'}
+          onClose={() => setVerify(null)}
+          onVerified={() => {
+            if (verify === 'change') setPinSetup(true)
+            else {
+              updateSettings({ pin: undefined, biometricId: undefined })
+              toast('Code d’accès désactivé')
+            }
+          }}
+        />
+      )}
       {recurringOpen && <RecurringSheet onClose={() => setRecurringOpen(false)} />}
       {currencyTo && <CurrencySheet to={currencyTo} onClose={() => setCurrencyTo(null)} />}
 

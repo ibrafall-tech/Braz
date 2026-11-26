@@ -19,7 +19,7 @@ const PERIODS: { value: Period; label: string }[] = [
 const delta = (now: number, before: number) => (before > 0 ? Math.round(((now - before) / before) * 100) : null)
 
 export function Stats() {
-  const { transactions, categories, month, setMonth, money, setTxForm } = useStore()
+  const { transactions, categories, month, setMonth, money, setTxForm, settings } = useStore()
   const [period, setPeriod] = useState<Period>('month')
   const year = month.slice(0, 4)
   const thisYear = currentMonth().slice(0, 4)
@@ -173,7 +173,7 @@ export function Stats() {
               <Donut key={`${period}-${month}`} slices={slices}>
                 <div>
                   <p className="text-xs text-muted">Total</p>
-                  <p className="display num text-lg font-semibold leading-tight">{formatCompact(expense)}</p>
+                  <p className="display num text-lg font-semibold leading-tight">{settings.hideAmounts ? "••••" : formatCompact(expense)}</p>
                 </div>
               </Donut>
               <ul className="w-full min-w-0 flex-1 space-y-3">

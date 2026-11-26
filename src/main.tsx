@@ -5,6 +5,7 @@ import './index.css'
 import { App } from './App'
 import { StoreProvider } from './store'
 import { ToastProvider } from './ui'
+import { CrashGuard } from './crash'
 
 // Une nouvelle version s'installe seule, mais jamais pendant une saisie en cours.
 const updateSW = registerSW({
@@ -33,10 +34,12 @@ if (vv) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <StoreProvider>
-      <ToastProvider>
-        <App />
-      </ToastProvider>
-    </StoreProvider>
+    <CrashGuard>
+      <StoreProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </StoreProvider>
+    </CrashGuard>
   </StrictMode>,
 )

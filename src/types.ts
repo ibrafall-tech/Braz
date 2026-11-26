@@ -102,6 +102,8 @@ export interface Settings {
   lastAccountId?: string
   /** Identifiant de la clé biométrique (Face ID, empreinte) enregistrée sur cet appareil */
   biometricId?: string
+  /** Mode discret : les montants sont masqués à l'écran (consultation en public) */
+  hideAmounts?: boolean
 }
 
 export interface Data {

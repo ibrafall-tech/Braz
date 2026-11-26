@@ -32,6 +32,28 @@ function writeGuard(g: Guard | null) {
 const penalty = (fails: number) => (fails < FREE_ATTEMPTS ? 0 : Math.min(30_000 * 2 ** (fails - FREE_ATTEMPTS), 900_000))
 const waitLabel = (ms: number) => (ms >= 60_000 ? `${Math.ceil(ms / 60_000)} min` : `${Math.ceil(ms / 1000)} s`)
 
+/** Vérifie un code en appliquant la garde anti-essais commune à tous les écrans. */
+function useGuardedCheck(pin: { salt: string; hash: string }) {
+  const [guard, setGuard] = useState(readGuard)
+  const [now, setNow] = useState(() => Date.now())
+  const waiting = Math.max(0, guard.until - now)
+  useEffect(() => {
+    if (guard.until <= Date.now()) return
+    const t = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(t)
+  }, [guard.until])
+  const check = async (code: string) => {
+    const ok = (await hashPin(code, pin.salt)) === pin.hash
+    const next = ok ? null : { fails: guard.fails + 1, until: Date.now() + penalty(guard.fails + 1) }
+    writeGuard(next)
+    setGuard(next ?? { fails: 0, until: 0 })
+    setNow(Date.now())
+    return ok
+  }
+  const error = waiting > 0 ? `Trop d’essais. Réessayez dans ${waitLabel(waiting)}` : undefined
+  return { check, waiting, error }
+}
+
 /* ---------- Biométrie (Face ID, empreinte) ----------
    La clé reste dans le téléphone. Sans serveur, on ne vérifie pas de signature : le simple fait que
    l'appareil accepte de l'utiliser prouve que son propriétaire s'est authentifié. */
@@ -164,17 +186,7 @@ export function Lock({ onUnlock }: { onUnlock: () => void }) {
   const { settings, replaceAll } = useStore()
   const [leaving, setLeaving] = useState(false)
   const [forgot, setForgot] = useState(false)
-  const pin = settings.pin!
-  const [guard, setGuard] = useState(readGuard)
-  const [now, setNow] = useState(() => Date.now())
-  const waiting = Math.max(0, guard.until - now)
-
-  // Décompte tant que le pavé est bloqué
-  useEffect(() => {
-    if (guard.until <= Date.now()) return
-    const t = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(t)
-  }, [guard.until])
+  const { check, waiting, error } = useGuardedCheck(settings.pin!)
 
   const open = () => {
     writeGuard(null)
@@ -208,17 +220,10 @@ export function Lock({ onUnlock }: { onUnlock: () => void }) {
         <PinPad
           title="Code d’accès"
           disabled={waiting > 0}
-          error={waiting > 0 ? `Trop d’essais. Réessayez dans ${waitLabel(waiting)}` : undefined}
+          error={error}
           onComplete={async (code) => {
-            const ok = (await hashPin(code, pin.salt)) === pin.hash
+            const ok = await check(code)
             if (ok) open()
-            else {
-              const fails = guard.fails + 1
-              const next = { fails, until: Date.now() + penalty(fails) }
-              writeGuard(next)
-              setGuard(next)
-              setNow(Date.now())
-            }
             return ok
           }}
         />
@@ -259,6 +264,35 @@ export function Lock({ onUnlock }: { onUnlock: () => void }) {
       )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Demande le code actuel avant une action sensible (changer ou retirer le code, activer la biométrie).
+ * Sans cette étape, une personne qui trouve l'application ouverte pourrait retirer la protection.
+ */
+export function PinVerifySheet({ title, onVerified, onClose: done }: { title: string; onVerified: () => void; onClose: () => void }) {
+  const { settings } = useStore()
+  const [closing, onClose] = useClosing(done)
+  const { check, waiting, error } = useGuardedCheck(settings.pin!)
+  return (
+    <Sheet title={title} onClose={onClose} closing={closing}>
+      <div className="flex justify-center pb-4 pt-2">
+        <PinPad
+          title="Code actuel"
+          disabled={waiting > 0}
+          error={error}
+          onComplete={async (code) => {
+            const ok = await check(code)
+            if (ok) {
+              onVerified()
+              done()
+            }
+            return ok
+          }}
+        />
+      </div>
+    </Sheet>
   )
 }
 

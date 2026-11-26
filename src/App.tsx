@@ -80,7 +80,7 @@ export function App() {
           type="button"
           onClick={() => setTxForm('new')}
           aria-label="Nouvelle transaction"
-          className="group mb-6 flex h-12 items-center justify-center gap-2 rounded-2xl bg-ember font-semibold text-white shadow-[0_10px_22px_-10px_var(--ember)] transition hover:brightness-105 active:scale-[0.97]"
+          className="group mb-6 flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#cc4824] font-semibold text-white shadow-[0_10px_22px_-10px_var(--ember)] transition hover:brightness-105 active:scale-[0.97]"
         >
           <Plus size={20} strokeWidth={2.6} className="transition-transform duration-300 group-hover:rotate-90" />
           <span className="hidden xl:inline">Nouvelle transaction</span>

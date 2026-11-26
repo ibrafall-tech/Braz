@@ -355,7 +355,7 @@ export function GoalSheet({ goal, onClose: done }: { goal: Goal | null; onClose:
 
 export function CategorySheet({ category, onClose: done }: { category: Category | null; onClose: () => void }) {
   const [closing, onClose] = useClosing(done)
-  const { transactions, budgets, save, remove } = useStore()
+  const { transactions, budgets, recurring, save, remove } = useStore()
   const toast = useToast()
   const [name, setName] = useState(category?.name ?? '')
   const [type, setType] = useState<TxType>(category?.type ?? 'expense')
@@ -363,6 +363,8 @@ export function CategorySheet({ category, onClose: done }: { category: Category 
   const [color, setColor] = useState(category?.color ?? PALETTE[0])
   const [error, setError] = useState<string>()
   const used = category ? transactions.filter((t) => t.categoryId === category.id).length : 0
+  // Une récurrence active continuerait de créer des transactions dans une catégorie disparue.
+  const usedByRecurring = !!category && recurring.some((r) => r.categoryId === category.id)
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -379,7 +381,7 @@ export function CategorySheet({ category, onClose: done }: { category: Category 
       onClose={onClose}
       footer={
         <>
-          {category && used === 0 && (
+          {category && used === 0 && !usedByRecurring && (
             <ConfirmDelete
               onConfirm={() => {
                 budgets.filter((b) => b.categoryId === category.id).forEach((b) => remove('budgets', b.id))
@@ -418,10 +420,12 @@ export function CategorySheet({ category, onClose: done }: { category: Category 
           <p className="mb-2 text-sm font-medium text-muted">Couleur</p>
           <Swatches colors={PALETTE} value={color} onChange={setColor} />
         </div>
-        {used > 0 && (
+        {used > 0 ? (
           <p className="text-sm text-muted">
             Utilisée par {used} transaction{used > 1 ? 's' : ''} : suppression impossible.
           </p>
+        ) : usedByRecurring && (
+          <p className="text-sm text-muted">Utilisée par une transaction récurrente : arrêtez-la d’abord pour supprimer la catégorie.</p>
         )}
       </form>
     </Sheet>

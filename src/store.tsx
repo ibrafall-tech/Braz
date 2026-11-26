@@ -3,7 +3,7 @@ import * as db from './db'
 import type { Account, Budget, Category, Currency, Data, Goal, Recurring, SavingsMove, Settings, Transaction, Transfer } from './types'
 import {
   DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, accountBalances, budgetAlerts, convertData, currentMonth, demoData, download, dueRecurring, emptyData,
-  formatMoney, normalize, toBackup, todayISO,
+  currencySymbol, formatMoney, normalize, toBackup, todayISO,
 } from './lib'
 
 type Lists = {
@@ -144,10 +144,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     const accounts = [...data.accounts].sort((a, b) => accountRank(a.id) - accountRank(b.id) || a.name.localeCompare(b.name, 'fr'))
     const balances = accountBalances(data)
+    // L'historique des versements fait foi : le total de chaque objectif en est toujours déduit,
+    // ce qui évite tout écart entre l'objectif et les soldes des comptes.
+    const savedBy = new Map<string, number>()
+    for (const m of data.moves) savedBy.set(m.goalId, (savedBy.get(m.goalId) ?? 0) + m.amount)
+    const goals = data.goals.map((g) => ({ ...g, saved: Math.round((savedBy.get(g.id) ?? 0) * 100) / 100 }))
+    const hide = !!data.settings.hideAmounts
     return {
       ...data,
       categories,
       accounts,
+      goals,
       balances,
       total: [...balances.values()].reduce((s, n) => s + n, 0),
       alerts: budgetAlerts(data, currentMonth()),
@@ -176,7 +183,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setTxForm,
       transferForm,
       setTransferForm,
-      money: (n, sign) => formatMoney(n, data.settings.currency, sign),
+      money: (n, sign) => (hide ? `•••• ${currencySymbol(data.settings.currency)}` : formatMoney(n, data.settings.currency, sign)),
     }
   }, [data, month, txForm, transferForm, save, remove, updateSettings, replaceAll])
 

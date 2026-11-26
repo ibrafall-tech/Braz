@@ -70,9 +70,11 @@ export function formatCompact(n: number): string {
   return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 }
 
+/** Plafond de saisie : au-delà, les calculs en virgule flottante perdent leur précision. */
+export const MAX_AMOUNT = 999_999_999_999
 export function parseAmount(raw: string): number {
   const n = Number(raw.replace(/[\s  ]/g, '').replace(',', '.'))
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0
+  return Number.isFinite(n) && n > 0 && n <= MAX_AMOUNT ? Math.round(n * 100) / 100 : 0
 }
 /** Met en forme la saisie d'un montant : « 125000 » → « 125 000 » */
 export function formatAmountInput(raw: string, c: Currency): string {
@@ -303,38 +305,55 @@ export function toBackup(data: Data): Backup {
   return { app: 'braz', version: 1, exportedAt: new Date().toISOString(), ...data, settings }
 }
 
+/* Contrôles de forme de chaque élément d'une sauvegarde importée */
+const isStr = (v: unknown): v is string => typeof v === 'string'
+const isAmount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= MAX_AMOUNT
+const isPositive = (v: unknown) => isAmount(v) && v > 0
+const isDate = (v: unknown) => isStr(v) && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const isType = (v: unknown) => v === 'income' || v === 'expense'
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+const CHECKS: Record<keyof Omit<Data, 'settings'>, [string, (x: Record<string, unknown>) => boolean]> = {
+  transactions: ['transactions', (t) => isStr(t.id) && isType(t.type) && isPositive(t.amount) && isStr(t.categoryId) && isDate(t.date)],
+  categories: ['catégories', (c) => isStr(c.id) && isStr(c.name) && isType(c.type)],
+  budgets: ['budgets', (b) => isStr(b.id) && isStr(b.categoryId) && isPositive(b.limit)],
+  goals: ['objectifs', (g) => isStr(g.id) && isStr(g.name) && isPositive(g.target)],
+  recurring: ['récurrences', (r) => isStr(r.id) && isType(r.type) && isPositive(r.amount) && isStr(r.categoryId)
+    && Number.isInteger(r.day) && /^\d{4}-\d{2}$/.test(String(r.startMonth))],
+  accounts: ['comptes', (a) => isStr(a.id) && isStr(a.name) && (a.initial === undefined || isAmount(a.initial))],
+  transfers: ['transferts', (t) => isStr(t.id) && isStr(t.fromId) && isStr(t.toId) && isPositive(t.amount) && isDate(t.date)],
+  moves: ['mouvements d’épargne', (m) => isStr(m.id) && isStr(m.goalId) && isAmount(m.amount) && isDate(m.date)],
+}
+const CURRENCIES: Currency[] = ['FCFA', 'XOF', 'EUR', 'USD']
+
 /** Valide un fichier de sauvegarde ; lève une erreur lisible si le fichier n'est pas exploitable. */
 export function readBackup(text: string): Data {
-  let raw: Partial<Backup>
+  let raw: unknown
   try {
     raw = JSON.parse(text)
   } catch {
     throw new Error('Ce fichier n’est pas une sauvegarde BRAZ lisible.')
   }
-  if (raw?.app !== 'braz' || !Array.isArray(raw.transactions) || !Array.isArray(raw.categories)) {
+  if (!isObj(raw) || raw.app !== 'braz' || !Array.isArray(raw.transactions) || !Array.isArray(raw.categories)) {
     throw new Error('Ce fichier n’est pas une sauvegarde BRAZ.')
   }
-  const okTx = raw.transactions.every(
-    (t) => t && typeof t.id === 'string' && typeof t.amount === 'number' && /^\d{4}-\d{2}-\d{2}$/.test(t.date),
-  )
-  if (!okTx) throw new Error('La sauvegarde contient des transactions invalides.')
-  return {
-    transactions: raw.transactions,
-    categories: raw.categories,
-    budgets: Array.isArray(raw.budgets) ? raw.budgets : [],
-    goals: Array.isArray(raw.goals) ? raw.goals : [],
-    recurring: Array.isArray(raw.recurring) ? raw.recurring : [],
-    accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
-    transfers: Array.isArray(raw.transfers) ? raw.transfers : [],
-    moves: Array.isArray(raw.moves) ? raw.moves : [],
-    settings: { id: 'settings', currency: raw.settings?.currency ?? 'FCFA' },
+  // Chaque élément est vérifié : une donnée mal formée ferait planter l'application après la restauration.
+  const out: Record<string, unknown[]> = {}
+  for (const [key, [label, ok]] of Object.entries(CHECKS)) {
+    const list = raw[key] ?? []
+    if (!Array.isArray(list) || !list.every((x) => isObj(x) && ok(x))) {
+      throw new Error(`La sauvegarde contient des ${label} invalides.`)
+    }
+    out[key] = list
   }
+  const currency = isObj(raw.settings) && CURRENCIES.includes(raw.settings.currency as Currency) ? (raw.settings.currency as Currency) : 'FCFA'
+  return { ...(out as unknown as Omit<Data, 'settings'>), settings: { id: 'settings', currency } }
 }
 
 export function toCSV(txs: Transaction[], categories: Category[], accounts: Account[]): string {
   const cat = new Map(categories.map((x) => [x.id, x.name]))
   const acc = new Map(accounts.map((x) => [x.id, x.name]))
-  const esc = (s: string) => `"${s.replace(/"/g, '""')}"`
+  // Un texte commençant par = + - @ serait interprété comme une formule par Excel : on le neutralise.
+  const esc = (s: string) => `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`
   const rows = sortTx(txs).map((t) =>
     [t.date, t.type === 'income' ? 'Revenu' : 'Dépense', esc(cat.get(t.categoryId) ?? ''), esc(acc.get(t.accountId ?? '') ?? ''), String(t.amount).replace('.', ','), esc(t.note)].join(';'),
   )
